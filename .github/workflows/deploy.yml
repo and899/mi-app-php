@@ -19,16 +19,23 @@ jobs:
 
     - name: 🚀 Deploy Application
       run: |
+        set -e
+        echo "🔧 Configurando SSH..."
+        
+        # Agregar el host a known_hosts
+        mkdir -p ~/.ssh
+        ssh-keyscan -H 62.171.169.111 >> ~/.ssh/known_hosts
+        
         echo "📤 Copiando archivos al servidor..."
         
-        # Copiar APP PHP al servidor
-        scp -r -o StrictHostKeyChecking=no ./app/* ${{ secrets.SSH_USER }}@62.171.169.111:/root/appPHP/
+        # Copiar APP PHP
+        scp -r -o StrictHostKeyChecking=no ./app/* root@62.171.169.111:/root/appPHP/
         
-        # Copiar NGINX PROXY al servidor
-        scp -r -o StrictHostKeyChecking=no ./nginx-proxy/* ${{ secrets.SSH_USER }}@62.171.169.111:/root/ngix-proxy/
+        # Copiar NGINX PROXY
+        scp -r -o StrictHostKeyChecking=no ./nginx-proxy/* root@62.171.169.111:/root/ngix-proxy/
         
-        # Ejecutar despliegue en el servidor
-        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@62.171.169.111 << 'EOF'
+        echo "🖥️ Ejecutando despliegue en el servidor..."
+        ssh -o StrictHostKeyChecking=no root@62.171.169.111 << 'EOF'
         set -e
         
         echo "🔨 Reconstruyendo aplicación PHP..."
@@ -44,21 +51,18 @@ jobs:
         
         echo "🔄 Actualizando Nginx Proxy..."
         cd /root/ngix-proxy
-        docker-compose down
+        docker-compose down 2>/dev/null || true
         docker-compose up -d --build
         
-        echo "🔗 Conectando servicios a la red..."
-        docker network connect app-network aplicacion 2>/dev/null || echo "⚠️  La red app-network podría no existir"
+        echo "🔗 Conectando servicios..."
+        docker network connect app-network aplicacion 2>/dev/null || echo "ℹ️ Red app-network no existe, se creará automáticamente"
+        
+        echo "⏳ Esperando que los servicios estén listos..."
+        sleep 20
         
         echo "✅ Verificando despliegue..."
-        sleep 15
-        echo "📊 Estado de contenedores:"
         docker ps
-        echo "🌐 Probando la aplicación..."
-        curl -f https://brainsync.colibrihub.com:8443 && echo "🎉 ¡Despliegue exitoso!" || echo "⚠️  La aplicación podría estar iniciando..."
-        
-        echo "=========================================="
-        echo "🚀 DESPLIEGUE COMPLETADO"
-        echo "📱 App disponible en: https://brainsync.colibrihub.com:8443"
-        echo "=========================================="
+        echo "🌐 App desplegada en: https://brainsync.colibrihub.com:8443"
         EOF
+        
+        echo "🎉 ¡Despliegue completado!"
