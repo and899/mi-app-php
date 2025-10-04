@@ -18,5 +18,5 @@ public class ClienteDto {
     private String genero;
     private String estadoCivil;
     private String ocupacion;
-    private String observaciones;
+    private String observaciones;//prueba
 }
