@@ -1,0 +1,64 @@
+name: 🚀 Deploy PHP App to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+
+    - name: 🔑 Setup SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_KEY }}
+
+    - name: 🚀 Deploy Application
+      run: |
+        echo "📤 Copiando archivos al servidor..."
+        
+        # Copiar APP PHP al servidor
+        scp -r -o StrictHostKeyChecking=no ./app/* ${{ secrets.SSH_USER }}@62.171.169.111:/root/appPHP/
+        
+        # Copiar NGINX PROXY al servidor
+        scp -r -o StrictHostKeyChecking=no ./nginx-proxy/* ${{ secrets.SSH_USER }}@62.171.169.111:/root/ngix-proxy/
+        
+        # Ejecutar despliegue en el servidor
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@62.171.169.111 << 'EOF'
+        set -e
+        
+        echo "🔨 Reconstruyendo aplicación PHP..."
+        cd /root/appPHP
+        docker build -t mi-app-php .
+        
+        echo "🛑 Deteniendo contenedor antiguo..."
+        docker stop aplicacion 2>/dev/null || true
+        docker rm aplicacion 2>/dev/null || true
+        
+        echo "🐳 Iniciando nuevo contenedor PHP..."
+        docker run -d --name aplicacion -p 80:80 mi-app-php
+        
+        echo "🔄 Actualizando Nginx Proxy..."
+        cd /root/ngix-proxy
+        docker-compose down
+        docker-compose up -d --build
+        
+        echo "🔗 Conectando servicios a la red..."
+        docker network connect app-network aplicacion 2>/dev/null || echo "⚠️  La red app-network podría no existir"
+        
+        echo "✅ Verificando despliegue..."
+        sleep 15
+        echo "📊 Estado de contenedores:"
+        docker ps
+        echo "🌐 Probando la aplicación..."
+        curl -f https://brainsync.colibrihub.com:8443 && echo "🎉 ¡Despliegue exitoso!" || echo "⚠️  La aplicación podría estar iniciando..."
+        
+        echo "=========================================="
+        echo "🚀 DESPLIEGUE COMPLETADO"
+        echo "📱 App disponible en: https://brainsync.colibrihub.com:8443"
+        echo "=========================================="
+        EOF
