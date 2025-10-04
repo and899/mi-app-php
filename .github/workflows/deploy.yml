@@ -34,6 +34,9 @@ jobs:
         # Copiar SPRING BOOT
         scp -r -o StrictHostKeyChecking=no ./mi-cliente/* root@62.171.169.111:/root/appPHP/mi-cliente/
 
+        # Copiar NOTIFICATION ← NUEVO
+        scp -r -o StrictHostKeyChecking=no ./mi-notificacion/* root@62.171.169.111:/root/appPHP/mi-notificacion/
+
         # Copiar NGINX PROXY
         scp -r -o StrictHostKeyChecking=no ./nginx-proxy/* root@62.171.169.111:/root/ngix-proxy/
 
@@ -51,11 +54,25 @@ jobs:
         ./gradlew build -x test
         docker build -t mi-cliente .
 
+        echo "📨 Construyendo aplicación Notification..." ← NUEVO
+        cd /root/appPHP/mi-notificacion
+        # Si usa Maven
+        if [ -f "pom.xml" ]; then
+            mvn clean package -DskipTests
+        # Si usa Gradle  
+        elif [ -f "build.gradle" ]; then
+            chmod +x gradlew
+            ./gradlew build -x test
+        fi
+        docker build -t mi-notificacion .
+
         echo "🛑 Deteniendo contenedores antiguos..."
         docker stop aplicacion 2>/dev/null || true
         docker rm aplicacion 2>/dev/null || true
         docker stop mi-cliente 2>/dev/null || true
         docker rm mi-cliente 2>/dev/null || true
+        docker stop mi-notificacion 2>/dev/null || true ← NUEVO
+        docker rm mi-notificacion 2>/dev/null || true ← NUEVO
 
         echo "🐳 Iniciando nuevo contenedor PHP..."
         docker run -d --name aplicacion -p 80:80 mi-app-php
@@ -71,6 +88,16 @@ jobs:
           -e SPRING_JPA_HIBERNATE_DDL_AUTO=update \
           mi-cliente
 
+        echo "📨 Iniciando nuevo contenedor Notification..." ← NUEVO
+        docker run -d \
+          --name mi-notificacion \
+          -p 8091:8091 \
+          --network bridge \
+          -e SPRING_DATASOURCE_URL="jdbc:mysql://172.17.0.5:3306/clientesdb?allowPublicKeyRetrieval=true&useSSL=false" \
+          -e SPRING_DATASOURCE_USERNAME=root \
+          -e SPRING_DATASOURCE_PASSWORD=cruz123 \
+          mi-notificacion
+
         echo "🔧 Actualizando Nginx Proxy..."
         cd /root/ngix-proxy
         docker-compose down 2>/dev/null || true
@@ -83,6 +110,7 @@ jobs:
         docker ps
         echo "✅ PHP App desplegada en: https://brainsync.colibrihub.com:8443"
         echo "✅ Spring Boot desplegada en: http://62.171.169.111:8090"
+        echo "✅ Notification Service desplegada en: http://62.171.169.111:8091" ← NUEVO
         EOF
 
         echo "🎉 ¡Despliegue completo exitoso!"
