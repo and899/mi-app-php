@@ -1,4 +1,4 @@
-name: 🚀 Deploy PHP App to VPS
+name: 🚀 Deploy Full Stack App to VPS
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v3
@@ -17,52 +17,72 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.SSH_KEY }}
 
-    - name: 🚀 Deploy Application
+    - name: 🚀 Deploy Full Stack Application
       run: |
         set -e
         echo "🔧 Configurando SSH..."
-        
+
         # Agregar el host a known_hosts
         mkdir -p ~/.ssh
         ssh-keyscan -H 62.171.169.111 >> ~/.ssh/known_hosts
-        
+
         echo "📤 Copiando archivos al servidor..."
-        
+
         # Copiar APP PHP
         scp -r -o StrictHostKeyChecking=no ./app/* root@62.171.169.111:/root/appPHP/
-        
+
+        # Copiar SPRING BOOT
+        scp -r -o StrictHostKeyChecking=no ./mi-cliente/* root@62.171.169.111:/root/appPHP/mi-cliente/
+
         # Copiar NGINX PROXY
         scp -r -o StrictHostKeyChecking=no ./nginx-proxy/* root@62.171.169.111:/root/ngix-proxy/
-        
-        echo "🖥️ Ejecutando despliegue en el servidor..."
+
+        echo "🎯 Ejecutando despliegue en el servidor..."
         ssh -o StrictHostKeyChecking=no root@62.171.169.111 << 'EOF'
         set -e
-        
+
         echo "🔨 Reconstruyendo aplicación PHP..."
         cd /root/appPHP
         docker build -t mi-app-php .
-        
-        echo "🛑 Deteniendo contenedor antiguo..."
+
+        echo "🔨 Construyendo aplicación Spring Boot..."
+        cd /root/appPHP/mi-cliente
+        chmod +x gradlew
+        ./gradlew build -x test
+        docker build -t mi-cliente .
+
+        echo "🛑 Deteniendo contenedores antiguos..."
         docker stop aplicacion 2>/dev/null || true
         docker rm aplicacion 2>/dev/null || true
-        
+        docker stop mi-cliente 2>/dev/null || true
+        docker rm mi-cliente 2>/dev/null || true
+
         echo "🐳 Iniciando nuevo contenedor PHP..."
         docker run -d --name aplicacion -p 80:80 mi-app-php
-        
-        echo "🔄 Actualizando Nginx Proxy..."
+
+        echo "☕ Iniciando nuevo contenedor Spring Boot..."
+        docker run -d \
+          --name mi-cliente \
+          -p 8090:8090 \
+          --network bridge \
+          -e SPRING_DATASOURCE_URL="jdbc:mysql://172.17.0.5:3306/clientesdb?allowPublicKeyRetrieval=true&useSSL=false" \
+          -e SPRING_DATASOURCE_USERNAME=root \
+          -e SPRING_DATASOURCE_PASSWORD=cruz123 \
+          -e SPRING_JPA_HIBERNATE_DDL_AUTO=update \
+          mi-cliente
+
+        echo "🔧 Actualizando Nginx Proxy..."
         cd /root/ngix-proxy
         docker-compose down 2>/dev/null || true
         docker-compose up -d --build
-        
-        echo "🔗 Conectando servicios..."
-        docker network connect app-network aplicacion 2>/dev/null || echo "ℹ️ Red app-network no existe, se creará automáticamente"
-        
+
         echo "⏳ Esperando que los servicios estén listos..."
-        sleep 20
-        
-        echo "✅ Verificando despliegue..."
+        sleep 30
+
+        echo "📊 Verificando despliegue..."
         docker ps
-        echo "🌐 App desplegada en: https://brainsync.colibrihub.com:8443"
+        echo "✅ PHP App desplegada en: https://brainsync.colibrihub.com:8443"
+        echo "✅ Spring Boot desplegada en: http://62.171.169.111:8090"
         EOF
-        
-        echo "🎉 ¡Despliegue completado!"
+
+        echo "🎉 ¡Despliegue completo exitoso!"
